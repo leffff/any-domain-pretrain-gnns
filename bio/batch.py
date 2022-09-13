@@ -10,7 +10,7 @@ class BatchFinetune(Data):
     """
 
     def __init__(self, batch=None, **kwargs):
-        super(BatchMasking, self).__init__(**kwargs)
+        super(BatchFinetune, self).__init__(**kwargs)
         self.batch = batch
 
     @staticmethod
@@ -73,6 +73,7 @@ class BatchMasking(Data):
         :class:`torch_geometric.data.Data` objects.
         The assignment vector :obj:`batch` is created on the fly."""
         keys = [set(data.keys) for data in data_list]
+
         keys = list(set.union(*keys))
         assert 'batch' not in keys
 
@@ -88,6 +89,10 @@ class BatchMasking(Data):
         for i, data in enumerate(data_list):
             num_nodes = data.num_nodes
             batch.batch.append(torch.full((num_nodes, ), i, dtype=torch.long))
+
+            if "masked_edge_idx" not in data.keys:
+                batch["masked_edge_idx"].append(torch.tensor([]))
+
             for key in data.keys:
                 item = data[key]
                 if key in ['edge_index']:
@@ -100,8 +105,7 @@ class BatchMasking(Data):
             cumsum_edge += data.edge_index.shape[1]
 
         for key in keys:
-            batch[key] = torch.cat(
-                batch[key], dim=data_list[0].cat_dim(key, batch[key][0]))
+            batch[key] = torch.cat(batch[key], dim=data_list[0].__cat_dim__(key, batch[key][0]))
         batch.batch = torch.cat(batch.batch, dim=-1)
         return batch.contiguous()
 

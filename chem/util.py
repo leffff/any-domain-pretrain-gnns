@@ -1,16 +1,11 @@
-import torch
-import copy
 import random
-import networkx as nx
-import numpy as np
-from torch_geometric.utils import convert
-from loader import graph_data_obj_to_nx_simple, nx_to_graph_data_obj_simple
-from rdkit import Chem
-from rdkit.Chem import AllChem
-from loader import mol_to_graph_data_obj_simple, \
-    graph_data_obj_to_mol_simple
 
-from loader import MoleculeDataset
+import networkx as nx
+import torch
+from rdkit.Chem import AllChem
+
+from chem.loader import MoleculeDataset
+from chem.loader import graph_data_obj_to_nx_simple, nx_to_graph_data_obj_simple
 
 
 def check_same_molecules(s1, s2):
@@ -185,21 +180,20 @@ def reset_idxes(G):
     return new_G, mapping
 
 
-# TODO(Bowen): more unittests
-class MaskAtom:
-    def __init__(self, num_atom_type, num_edge_type, mask_rate, mask_edge=True):
+class MaskNode:
+    def __init__(self, num_node_features, num_edge_features, mask_rate, mask_edge=True): # FIX: finally decide what are num_node_features, num_edge_features
         """
         Randomly masks an atom, and optionally masks edges connecting to it.
         The mask atom type index is num_possible_atom_type
         The mask edge type index in num_possible_edge_type
-        :param num_atom_type:
-        :param num_edge_type:
+        :param num_node_features:
+        :param num_edge_features:
         :param mask_rate: % of atoms to be masked
         :param mask_edge: If True, also mask the edges that connect to the
         masked atoms
         """
-        self.num_atom_type = num_atom_type
-        self.num_edge_type = num_edge_type
+        self.num_node_features = num_node_features
+        self.num_edge_features = num_edge_features
         self.mask_rate = mask_rate
         self.mask_edge = mask_edge
 
@@ -209,7 +203,7 @@ class MaskAtom:
         :param data: pytorch geometric data object. Assume that the edge
         ordering is the default pytorch geometric ordering, where the two
         directions of a single edge occur in pairs.
-        Eg. data.edge_index = tensor([[0, 1, 1, 2, 2, 3],
+        E.g. data.edge_index = tensor([[0, 1, 1, 2, 2, 3],
                                      [1, 0, 2, 1, 3, 2]])
         :param masked_atom_indices: If None, then randomly samples num_atoms
         * mask rate number of atom indices
@@ -232,13 +226,14 @@ class MaskAtom:
         # create mask node label by copying atom feature of mask atom
         mask_node_labels_list = []
         for atom_idx in masked_atom_indices:
-            mask_node_labels_list.append(data.x[atom_idx].view(1, -1))
+            mask_node_labels_list.append(data.x[atom_idx].view(1, -1)[:3]) # FIX_HARDCODE
+            # : slice until 3 is temporary solution and should be replaced with number of features
         data.mask_node_label = torch.cat(mask_node_labels_list, dim=0)
         data.masked_atom_indices = torch.tensor(masked_atom_indices)
 
         # modify the original node feature of the masked node
         for atom_idx in masked_atom_indices:
-            data.x[atom_idx] = torch.tensor([self.num_atom_type, 0])
+            data.x[atom_idx] = torch.tensor([0] * (self.num_node_features - 1) + [1]) # WEAKNESS: be carefull with self.num_node_features
 
         if self.mask_edge:
             # create mask edge labels by copying edge features of edges that are bonded to
@@ -247,38 +242,36 @@ class MaskAtom:
             for bond_idx, (u, v) in enumerate(data.edge_index.cpu().numpy().T):
                 for atom_idx in masked_atom_indices:
                     if atom_idx in set((u, v)) and \
-                        bond_idx not in connected_edge_indices:
+                            bond_idx not in connected_edge_indices:
                         connected_edge_indices.append(bond_idx)
 
             if len(connected_edge_indices) > 0:
                 # create mask edge labels by copying bond features of the bonds connected to
                 # the mask atoms
                 mask_edge_labels_list = []
-                for bond_idx in connected_edge_indices[::2]: # because the
+
+                for bond_idx in connected_edge_indices:  # because the
                     # edge ordering is such that two directions of a single
                     # edge occur in pairs, so to get the unique undirected
                     # edge indices, we take every 2nd edge index from list
-                    mask_edge_labels_list.append(
-                        data.edge_attr[bond_idx].view(1, -1))
+                    mask_edge_labels_list.append(data.edge_attr[bond_idx].view(1, -1))
 
                 data.mask_edge_label = torch.cat(mask_edge_labels_list, dim=0)
                 # modify the original bond features of the bonds connected to the mask atoms
                 for bond_idx in connected_edge_indices:
-                    data.edge_attr[bond_idx] = torch.tensor(
-                        [self.num_edge_type, 0])
+                    data.edge_attr[bond_idx] = torch.tensor([0] * (self.num_edge_features - 1) +[1])
 
                 data.connected_edge_indices = torch.tensor(
-                    connected_edge_indices[::2])
+                    connected_edge_indices)  # LEGACY_FIX: graphs are not necessary biderectional
             else:
                 data.mask_edge_label = torch.empty((0, 2)).to(torch.int64)
-                data.connected_edge_indices = torch.tensor(
-                    connected_edge_indices).to(torch.int64)
+                data.connected_edge_indices = torch.tensor(connected_edge_indices).to(torch.int64)
 
         return data
 
     def __repr__(self):
         return '{}(num_atom_type={}, num_edge_type={}, mask_rate={}, mask_edge={})'.format(
-            self.__class__.__name__, self.num_atom_type, self.num_edge_type,
+            self.__class__.__name__, self.num_node_features, self.num_edge_features,
             self.mask_rate, self.mask_edge)
 
 
@@ -418,4 +411,3 @@ if __name__ == "__main__":
     # such that two directions of a single edge occur in pairs, so to get the
     # unique undirected edge indices, we take every 2nd edge index from list
     """
-

@@ -1,0 +1,13 @@
+torch
+torch-geometric
+torch-sparse
+torch-scatter
+torch-cluster
+torch-spline-conv
+numpy
+scikit-learn
+rdkit
+networkx
+tqdm
+pandas
+tensorboardX

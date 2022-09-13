@@ -1,28 +1,23 @@
 import argparse
 
-from loader import BioDataset
-from torch_geometric.data import DataLoader
-from torch_geometric.nn.inits import uniform
-from torch_geometric.nn import global_mean_pool
-
+import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
-
+from torch_geometric.data import DataLoader
+from torch_geometric.nn import global_mean_pool
+from torch_geometric.nn.inits import uniform
 from tqdm import tqdm
-import numpy as np
 
+from loader import BioDataset
 from model import GNN
-from sklearn.metrics import roc_auc_score
-
-import pandas as pd
 
 
 def cycle_index(num, shift):
     arr = torch.arange(num) + shift
     arr[-shift:] = torch.arange(shift)
     return arr
+
 
 class Discriminator(nn.Module):
     def __init__(self, hidden_dim):
@@ -36,7 +31,8 @@ class Discriminator(nn.Module):
 
     def forward(self, x, summary):
         h = torch.matmul(summary, self.weight)
-        return torch.sum(x*h, dim = 1)
+        return torch.sum(x * h, dim=1)
+
 
 class Infomax(nn.Module):
     def __init__(self, gnn, discriminator):
@@ -64,19 +60,22 @@ def train(args, model, device, loader, optimizer):
         negative_expanded_summary_emb = shifted_summary_emb[batch.batch]
 
         positive_score = model.discriminator(node_emb, positive_expanded_summary_emb)
-        negative_score = model.discriminator(node_emb, negative_expanded_summary_emb)      
+        negative_score = model.discriminator(node_emb, negative_expanded_summary_emb)
 
         optimizer.zero_grad()
-        loss = model.loss(positive_score, torch.ones_like(positive_score)) + model.loss(negative_score, torch.zeros_like(negative_score))
+        loss = model.loss(positive_score, torch.ones_like(positive_score)) + model.loss(negative_score,
+                                                                                        torch.zeros_like(
+                                                                                            negative_score))
         loss.backward()
 
         optimizer.step()
 
         train_loss_accum += float(loss.detach().cpu().item())
-        acc = (torch.sum(positive_score > 0) + torch.sum(negative_score < 0)).to(torch.float32)/float(2*len(positive_score))
+        acc = (torch.sum(positive_score > 0) + torch.sum(negative_score < 0)).to(torch.float32) / float(
+            2 * len(positive_score))
         train_acc_accum += float(acc.detach().cpu().item())
 
-    return train_acc_accum/(step+1), train_loss_accum/(step+1)
+    return train_acc_accum / (step + 1), train_loss_accum / (step + 1)
 
 
 def main():
@@ -101,11 +100,10 @@ def main():
     parser.add_argument('--JK', type=str, default="last",
                         help='how the node features across layers are combined. last, sum, max or concat')
     parser.add_argument('--gnn_type', type=str, default="gin")
-    parser.add_argument('--model_file', type = str, default = '', help='filename to output the pre-trained model')
-    parser.add_argument('--seed', type=int, default=0, help = "Seed for splitting dataset.")
-    parser.add_argument('--num_workers', type=int, default = 4, help='number of workers for dataset loading')
+    parser.add_argument('--model_file', type=str, default='', help='filename to output the pre-trained model')
+    parser.add_argument('--seed', type=int, default=0, help="Seed for splitting dataset.")
+    parser.add_argument('--num_workers', type=int, default=4, help='number of workers for dataset loading')
     args = parser.parse_args()
-
 
     torch.manual_seed(0)
     np.random.seed(0)
@@ -113,39 +111,38 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(0)
 
-    #set up dataset
+    # set up dataset
     root_unsupervised = 'dataset/unsupervised'
     dataset = BioDataset(root_unsupervised, data_type='unsupervised')
 
     print(dataset)
 
-    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers = args.num_workers)
+    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
-    #set up model
-    gnn = GNN(args.num_layer, args.emb_dim, JK = args.JK, drop_ratio = args.dropout_ratio, gnn_type = args.gnn_type)
+    # set up model
+    gnn = GNN(args.num_layer, args.emb_dim, JK=args.JK, drop_ratio=args.dropout_ratio, gnn_type=args.gnn_type)
 
     discriminator = Discriminator(args.emb_dim)
 
     model = Infomax(gnn, discriminator)
-    
+
     model.to(device)
 
-    #set up optimizer
+    # set up optimizer
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.decay)
     print(optimizer)
 
-
-    for epoch in range(1, args.epochs+1):
+    for epoch in range(1, args.epochs + 1):
         print("====epoch " + str(epoch))
-    
+
         train_acc, train_loss = train(args, model, device, loader, optimizer)
 
         print(train_acc)
         print(train_loss)
 
-
     if not args.model_file == "":
         torch.save(model.gnn.state_dict(), args.model_file + ".pth")
+
 
 if __name__ == "__main__":
     main()
