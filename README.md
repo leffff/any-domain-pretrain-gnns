@@ -7,3 +7,4 @@ Implemented pretraining methods:
 1. Edge Masking
 2. Node Masking
 3. Node and edge masking
+4. Deep Graph Infomax
