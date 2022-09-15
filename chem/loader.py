@@ -17,38 +17,38 @@ from torch_geometric.data import InMemoryDataset
 from torch_geometric.data import Batch
 from itertools import repeat, product, chain
 
-
 # allowable node and edge features
 allowable_features = {
-    'possible_atomic_num_list' : list(range(1, 119)),
-    'possible_formal_charge_list' : [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5],
-    'possible_chirality_list' : [
+    'possible_atomic_num_list': list(range(1, 119)),
+    'possible_formal_charge_list': [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5],
+    'possible_chirality_list': [
         Chem.rdchem.ChiralType.CHI_UNSPECIFIED,
         Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CW,
         Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CCW,
         Chem.rdchem.ChiralType.CHI_OTHER
     ],
-    'possible_hybridization_list' : [
+    'possible_hybridization_list': [
         Chem.rdchem.HybridizationType.S,
         Chem.rdchem.HybridizationType.SP, Chem.rdchem.HybridizationType.SP2,
         Chem.rdchem.HybridizationType.SP3, Chem.rdchem.HybridizationType.SP3D,
         Chem.rdchem.HybridizationType.SP3D2, Chem.rdchem.HybridizationType.UNSPECIFIED
     ],
-    'possible_numH_list' : [0, 1, 2, 3, 4, 5, 6, 7, 8],
-    'possible_implicit_valence_list' : [0, 1, 2, 3, 4, 5, 6],
-    'possible_degree_list' : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    'possible_bonds' : [
+    'possible_numH_list': [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    'possible_implicit_valence_list': [0, 1, 2, 3, 4, 5, 6],
+    'possible_degree_list': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    'possible_bonds': [
         Chem.rdchem.BondType.SINGLE,
         Chem.rdchem.BondType.DOUBLE,
         Chem.rdchem.BondType.TRIPLE,
         Chem.rdchem.BondType.AROMATIC
     ],
-    'possible_bond_dirs' : [ # only for double bond stereo information
+    'possible_bond_dirs': [  # only for double bond stereo information
         Chem.rdchem.BondDir.NONE,
         Chem.rdchem.BondDir.ENDUPRIGHT,
         Chem.rdchem.BondDir.ENDDOWNRIGHT
     ]
 }
+
 
 def mol_to_graph_data_obj_simple(mol):
     """
@@ -59,18 +59,18 @@ def mol_to_graph_data_obj_simple(mol):
     :return: graph data object with the attributes: x, edge_index, edge_attr
     """
     # atoms
-    num_atom_features = 2   # atom type,  chirality tag
+    num_atom_features = 2  # atom type,  chirality tag
     atom_features_list = []
     for atom in mol.GetAtoms():
         atom_feature = [allowable_features['possible_atomic_num_list'].index(
             atom.GetAtomicNum())] + [allowable_features[
-            'possible_chirality_list'].index(atom.GetChiralTag())]
+                                         'possible_chirality_list'].index(atom.GetChiralTag())]
         atom_features_list.append(atom_feature)
     x = torch.tensor(np.array(atom_features_list), dtype=torch.long)
 
     # bonds
-    num_bond_features = 2   # bond type, bond direction
-    if len(mol.GetBonds()) > 0: # mol has bonds
+    num_bond_features = 2  # bond type, bond direction
+    if len(mol.GetBonds()) > 0:  # mol has bonds
         edges_list = []
         edge_features_list = []
         for bond in mol.GetBonds():
@@ -78,7 +78,7 @@ def mol_to_graph_data_obj_simple(mol):
             j = bond.GetEndAtomIdx()
             edge_feature = [allowable_features['possible_bonds'].index(
                 bond.GetBondType())] + [allowable_features[
-                                            'possible_bond_dirs'].index(
+                'possible_bond_dirs'].index(
                 bond.GetBondDir())]
             edges_list.append((i, j))
             edge_features_list.append(edge_feature)
@@ -91,13 +91,14 @@ def mol_to_graph_data_obj_simple(mol):
         # data.edge_attr: Edge feature matrix with shape [num_edges, num_edge_features]
         edge_attr = torch.tensor(np.array(edge_features_list),
                                  dtype=torch.long)
-    else:   # mol has no bonds
+    else:  # mol has no bonds
         edge_index = torch.empty((2, 0), dtype=torch.long)
         edge_attr = torch.empty((0, num_bond_features), dtype=torch.long)
 
     data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
 
     return data
+
 
 def graph_data_obj_to_mol_simple(data_x, data_edge_index, data_edge_attr):
     """
@@ -143,6 +144,7 @@ def graph_data_obj_to_mol_simple(data_x, data_edge_index, data_edge_attr):
 
     return mol
 
+
 def graph_data_obj_to_nx_simple(data):
     """
     Converts graph Data object required by the pytorch geometric package to
@@ -175,6 +177,28 @@ def graph_data_obj_to_nx_simple(data):
                        bond_dir_idx=bond_dir_idx)
 
     return G
+
+
+def graph_data_obj_to_nx(data):
+    """
+    Converts pytorch geometric Data obj to network x data object.
+    :param data: pytorch geometric Data object
+    :return: nx graph object
+    """
+    G = nx.Graph()
+
+    # edges
+    edge_index = data.edge_index.cpu().numpy()
+    edge_attr = data.edge_attr.cpu().numpy()
+    n_edges = edge_index.shape[1]
+    for j in range(0, n_edges, 2):
+        begin_idx = int(edge_index[0, j])
+        end_idx = int(edge_index[1, j])
+        w1, w2, w3, w4, w5, w6, w7, _, _ = edge_attr[j].astype(bool)
+        if not G.has_edge(begin_idx, end_idx):
+            G.add_edge(begin_idx, end_idx, w1=w1, w2=w2, w3=w3, w4=w4, w5=w5, # FIX: дописат разбиение на наши фичи
+                       w6=w6, w7=w7)
+
 
 def nx_to_graph_data_obj_simple(G):
     """
@@ -212,13 +236,14 @@ def nx_to_graph_data_obj_simple(G):
         # data.edge_attr: Edge feature matrix with shape [num_edges, num_edge_features]
         edge_attr = torch.tensor(np.array(edge_features_list),
                                  dtype=torch.long)
-    else:   # mol has no bonds
+    else:  # mol has no bonds
         edge_index = torch.empty((2, 0), dtype=torch.long)
         edge_attr = torch.empty((0, num_bond_features), dtype=torch.long)
 
     data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
 
     return data
+
 
 def get_gasteiger_partial_charges(mol, n_iter=12):
     """
@@ -233,6 +258,7 @@ def get_gasteiger_partial_charges(mol, n_iter=12):
                        mol.GetAtoms()]
     return partial_charges
 
+
 def create_standardized_mol_id(smiles):
     """
 
@@ -244,8 +270,8 @@ def create_standardized_mol_id(smiles):
         smiles = AllChem.MolToSmiles(AllChem.MolFromSmiles(smiles),
                                      isomericSmiles=False)
         mol = AllChem.MolFromSmiles(smiles)
-        if mol != None: # to catch weird issue with O=C1O[al]2oc(=O)c3ccc(cn3)c3ccccc3c3cccc(c3)c3ccccc3c3cc(C(F)(F)F)c(cc3o2)-c2ccccc2-c2cccc(c2)-c2ccccc2-c2cccnc21
-            if '.' in smiles: # if multiple species, pick largest molecule
+        if mol != None:  # to catch weird issue with O=C1O[al]2oc(=O)c3ccc(cn3)c3ccccc3c3cccc(c3)c3ccccc3c3cc(C(F)(F)F)c(cc3o2)-c2ccccc2-c2cccc(c2)-c2ccccc2-c2cccnc21
+            if '.' in smiles:  # if multiple species, pick largest molecule
                 mol_species_list = split_rdkit_mol_obj(mol)
                 largest_mol = get_largest_mol(mol_species_list)
                 inchi = AllChem.MolToInchi(largest_mol)
@@ -257,11 +283,12 @@ def create_standardized_mol_id(smiles):
     else:
         return
 
+
 class MoleculeDataset(InMemoryDataset):
     def __init__(self,
                  root,
-                 #data = None,
-                 #slices = None,
+                 # data = None,
+                 # slices = None,
                  transform=None,
                  pre_transform=None,
                  pre_filter=None,
@@ -282,12 +309,11 @@ class MoleculeDataset(InMemoryDataset):
         self.root = root
 
         super(MoleculeDataset, self).__init__(root, transform, pre_transform,
-                                                 pre_filter)
+                                              pre_filter)
         self.transform, self.pre_transform, self.pre_filter = transform, pre_transform, pre_filter
 
         if not empty:
             self.data, self.slices = torch.load(self.processed_paths[0])
-
 
     def get(self, idx):
         data = Data()
@@ -295,10 +321,9 @@ class MoleculeDataset(InMemoryDataset):
             item, slices = self.data[key], self.slices[key]
             s = list(repeat(slice(None), item.dim()))
             s[data.cat_dim(key, item)] = slice(slices[idx],
-                                                    slices[idx + 1])
+                                               slices[idx + 1])
             data[key] = item[s]
         return data
-
 
     @property
     def raw_file_names(self):
@@ -352,18 +377,18 @@ class MoleculeDataset(InMemoryDataset):
 
             ### 
             downstream_dir = [
-            'dataset/bace',
-            'dataset/bbbp',
-            'dataset/clintox',
-            'dataset/esol',
-            'dataset/freesolv',
-            'dataset/hiv',
-            'dataset/lipophilicity',
-            'dataset/muv',
-            # 'dataset/pcba/processed/smiles.csv',
-            'dataset/sider',
-            'dataset/tox21',
-            'dataset/toxcast'
+                'dataset/bace',
+                'dataset/bbbp',
+                'dataset/clintox',
+                'dataset/esol',
+                'dataset/freesolv',
+                'dataset/hiv',
+                'dataset/lipophilicity',
+                'dataset/muv',
+                # 'dataset/pcba/processed/smiles.csv',
+                'dataset/sider',
+                'dataset/tox21',
+                'dataset/toxcast'
             ]
 
             downstream_inchi_set = set()
@@ -377,9 +402,12 @@ class MoleculeDataset(InMemoryDataset):
 
                 assert len(downstream_dataset) == len(downstream_smiles)
 
-                _, _, _, (train_smiles, valid_smiles, test_smiles) = scaffold_split(downstream_dataset, downstream_smiles, task_idx=None, null_value=0,
-                                   frac_train=0.8,frac_valid=0.1, frac_test=0.1,
-                                   return_smiles=True)
+                _, _, _, (train_smiles, valid_smiles, test_smiles) = scaffold_split(downstream_dataset,
+                                                                                    downstream_smiles, task_idx=None,
+                                                                                    null_value=0,
+                                                                                    frac_train=0.8, frac_valid=0.1,
+                                                                                    frac_test=0.1,
+                                                                                    return_smiles=True)
 
                 ### remove both test and validation molecules
                 remove_smiles = test_smiles + valid_smiles
@@ -388,8 +416,8 @@ class MoleculeDataset(InMemoryDataset):
                 for smiles in remove_smiles:
                     species_list = smiles.split('.')
                     for s in species_list:  # record inchi for all species, not just
-                     # largest (by default in create_standardized_mol_id if input has
-                     # multiple species)
+                        # largest (by default in create_standardized_mol_id if input has
+                        # multiple species)
                         inchi = create_standardized_mol_id(s)
                         downstream_inchis.append(inchi)
                 downstream_inchi_set.update(downstream_inchis)
@@ -432,8 +460,8 @@ class MoleculeDataset(InMemoryDataset):
                 print(i)
                 rdkit_mol = rdkit_mol_objs[i]
                 ## convert aromatic bonds to double bonds
-                #Chem.SanitizeMol(rdkit_mol,
-                                 #sanitizeOps=Chem.SanitizeFlags.SANITIZE_KEKULIZE)
+                # Chem.SanitizeMol(rdkit_mol,
+                # sanitizeOps=Chem.SanitizeFlags.SANITIZE_KEKULIZE)
                 data = mol_to_graph_data_obj_simple(rdkit_mol)
                 # manually add mol id
                 data.id = torch.tensor(
@@ -616,7 +644,7 @@ class MoleculeDataset(InMemoryDataset):
                                                sep=',', header=None)[0])
             for i in range(len(smiles_list)):
                 print(i)
-                if '.' not in smiles_list[i]:   # remove examples with
+                if '.' not in smiles_list[i]:  # remove examples with
                     # multiples species
                     rdkit_mol = rdkit_mol_objs[i]
                     mw = Descriptors.MolWt(rdkit_mol)
@@ -717,7 +745,7 @@ class MoleculeDataset(InMemoryDataset):
                     data.y = torch.tensor([labels[i]])
                     data_list.append(data)
                     data_smiles_list.append(smiles_list[i])
-                    
+
 
         else:
             raise ValueError('Invalid dataset name')
@@ -736,6 +764,7 @@ class MoleculeDataset(InMemoryDataset):
 
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])
+
 
 # NB: only properly tested when dataset_1 is chembl_with_labels and dataset_2
 # is pcba_pretrain
@@ -776,6 +805,7 @@ def merge_dataset_objs(dataset_1, dataset_2):
 
     return new_dataset
 
+
 def create_circular_fingerprint(mol, radius, size, chirality):
     """
 
@@ -788,6 +818,7 @@ def create_circular_fingerprint(mol, radius, size, chirality):
     fp = GetMorganFingerprintAsBitVect(mol, radius,
                                        nBits=size, useChirality=chirality)
     return np.array(fp)
+
 
 class MoleculeFingerprintDataset(data.Dataset):
     def __init__(self, root, dataset, radius, size, chirality=True):
@@ -852,9 +883,9 @@ class MoleculeFingerprintDataset(data.Dataset):
                 rdkit_mol = rdkit_mol_objs[i]
                 ## convert aromatic bonds to double bonds
                 fp_arr = create_circular_fingerprint(rdkit_mol,
-                                                        self.radius,
-                                                        self.size,
-                                                        self.chirality)
+                                                     self.radius,
+                                                     self.size,
+                                                     self.chirality)
                 fp_arr = torch.tensor(fp_arr)
 
                 # manually add mol id
@@ -872,9 +903,9 @@ class MoleculeFingerprintDataset(data.Dataset):
                 rdkit_mol = rdkit_mol_objs[i]
                 # # convert aromatic bonds to double bonds
                 fp_arr = create_circular_fingerprint(rdkit_mol,
-                                                        self.radius,
-                                                        self.size,
-                                                        self.chirality)
+                                                     self.radius,
+                                                     self.size,
+                                                     self.chirality)
                 fp_arr = torch.tensor(fp_arr)
 
                 # manually add mol id
@@ -893,7 +924,7 @@ class MoleculeFingerprintDataset(data.Dataset):
                                   index=False,
                                   header=False)
         with open(os.path.join(processed_dir,
-                                    'fingerprint_data_processed.pkl'),
+                               'fingerprint_data_processed.pkl'),
                   'wb') as f:
             pickle.dump(data_list, f)
 
@@ -918,7 +949,8 @@ class MoleculeFingerprintDataset(data.Dataset):
     def __getitem__(self, index):
         ## if iterable class is passed, return dataset objection
         if hasattr(index, "__iter__"):
-            dataset = MoleculeFingerprintDataset(self.root, self.dataset, self.radius, self.size, chirality=self.chirality)
+            dataset = MoleculeFingerprintDataset(self.root, self.dataset, self.radius, self.size,
+                                                 chirality=self.chirality)
             dataset.data_list = [self.data_list[i] for i in index]
             return dataset
         else:
@@ -936,7 +968,7 @@ def _load_tox21_dataset(input_path):
     smiles_list = input_df['smiles']
     rdkit_mol_objs_list = [AllChem.MolFromSmiles(s) for s in smiles_list]
     tasks = ['NR-AR', 'NR-AR-LBD', 'NR-AhR', 'NR-Aromatase', 'NR-ER', 'NR-ER-LBD',
-       'NR-PPAR-gamma', 'SR-ARE', 'SR-ATAD5', 'SR-HSE', 'SR-MMP', 'SR-p53']
+             'NR-PPAR-gamma', 'SR-ARE', 'SR-ATAD5', 'SR-HSE', 'SR-MMP', 'SR-p53']
     labels = input_df[tasks]
     # convert 0 to -1
     labels = labels.replace(0, -1)
@@ -945,6 +977,7 @@ def _load_tox21_dataset(input_path):
     assert len(smiles_list) == len(rdkit_mol_objs_list)
     assert len(smiles_list) == len(labels)
     return smiles_list, rdkit_mol_objs_list, labels.values
+
 
 def _load_hiv_dataset(input_path):
     """
@@ -963,6 +996,7 @@ def _load_hiv_dataset(input_path):
     assert len(smiles_list) == len(labels)
     return smiles_list, rdkit_mol_objs_list, labels.values
 
+
 def _load_bace_dataset(input_path):
     """
 
@@ -979,13 +1013,14 @@ def _load_bace_dataset(input_path):
     labels = labels.replace(0, -1)
     # there are no nans
     folds = input_df['Model']
-    folds = folds.replace('Train', 0)   # 0 -> train
-    folds = folds.replace('Valid', 1)   # 1 -> valid
-    folds = folds.replace('Test', 2)    # 2 -> test
+    folds = folds.replace('Train', 0)  # 0 -> train
+    folds = folds.replace('Valid', 1)  # 1 -> valid
+    folds = folds.replace('Test', 2)  # 2 -> test
     assert len(smiles_list) == len(rdkit_mol_objs_list)
     assert len(smiles_list) == len(labels)
     assert len(smiles_list) == len(folds)
     return smiles_list, rdkit_mol_objs_list, folds.values, labels.values
+
 
 def _load_bbbp_dataset(input_path):
     """
@@ -999,7 +1034,7 @@ def _load_bbbp_dataset(input_path):
     rdkit_mol_objs_list = [AllChem.MolFromSmiles(s) for s in smiles_list]
 
     preprocessed_rdkit_mol_objs_list = [m if m != None else None for m in
-                                                          rdkit_mol_objs_list]
+                                        rdkit_mol_objs_list]
     preprocessed_smiles_list = [AllChem.MolToSmiles(m) if m != None else
                                 None for m in preprocessed_rdkit_mol_objs_list]
     labels = input_df['p_np']
@@ -1011,6 +1046,7 @@ def _load_bbbp_dataset(input_path):
     assert len(smiles_list) == len(labels)
     return preprocessed_smiles_list, preprocessed_rdkit_mol_objs_list, \
            labels.values
+
 
 def _load_clintox_dataset(input_path):
     """
@@ -1037,6 +1073,8 @@ def _load_clintox_dataset(input_path):
     assert len(smiles_list) == len(labels)
     return preprocessed_smiles_list, preprocessed_rdkit_mol_objs_list, \
            labels.values
+
+
 # input_path = 'dataset/clintox/raw/clintox.csv'
 # smiles_list, rdkit_mol_objs_list, labels = _load_clintox_dataset(input_path)
 
@@ -1055,6 +1093,8 @@ def _load_esol_dataset(input_path):
     assert len(smiles_list) == len(rdkit_mol_objs_list)
     assert len(smiles_list) == len(labels)
     return smiles_list, rdkit_mol_objs_list, labels.values
+
+
 # input_path = 'dataset/esol/raw/delaney-processed.csv'
 # smiles_list, rdkit_mol_objs_list, labels = _load_esol_dataset(input_path)
 
@@ -1101,8 +1141,8 @@ def _load_muv_dataset(input_path):
     smiles_list = input_df['smiles']
     rdkit_mol_objs_list = [AllChem.MolFromSmiles(s) for s in smiles_list]
     tasks = ['MUV-466', 'MUV-548', 'MUV-600', 'MUV-644', 'MUV-652', 'MUV-689',
-       'MUV-692', 'MUV-712', 'MUV-713', 'MUV-733', 'MUV-737', 'MUV-810',
-       'MUV-832', 'MUV-846', 'MUV-852', 'MUV-858', 'MUV-859']
+             'MUV-692', 'MUV-712', 'MUV-713', 'MUV-733', 'MUV-737', 'MUV-810',
+             'MUV-832', 'MUV-846', 'MUV-852', 'MUV-858', 'MUV-859']
     labels = input_df[tasks]
     # convert 0 to -1
     labels = labels.replace(0, -1)
@@ -1111,6 +1151,7 @@ def _load_muv_dataset(input_path):
     assert len(smiles_list) == len(rdkit_mol_objs_list)
     assert len(smiles_list) == len(labels)
     return smiles_list, rdkit_mol_objs_list, labels.values
+
 
 def _load_sider_dataset(input_path):
     """
@@ -1123,29 +1164,30 @@ def _load_sider_dataset(input_path):
     smiles_list = input_df['smiles']
     rdkit_mol_objs_list = [AllChem.MolFromSmiles(s) for s in smiles_list]
     tasks = ['Hepatobiliary disorders',
-       'Metabolism and nutrition disorders', 'Product issues', 'Eye disorders',
-       'Investigations', 'Musculoskeletal and connective tissue disorders',
-       'Gastrointestinal disorders', 'Social circumstances',
-       'Immune system disorders', 'Reproductive system and breast disorders',
-       'Neoplasms benign, malignant and unspecified (incl cysts and polyps)',
-       'General disorders and administration site conditions',
-       'Endocrine disorders', 'Surgical and medical procedures',
-       'Vascular disorders', 'Blood and lymphatic system disorders',
-       'Skin and subcutaneous tissue disorders',
-       'Congenital, familial and genetic disorders',
-       'Infections and infestations',
-       'Respiratory, thoracic and mediastinal disorders',
-       'Psychiatric disorders', 'Renal and urinary disorders',
-       'Pregnancy, puerperium and perinatal conditions',
-       'Ear and labyrinth disorders', 'Cardiac disorders',
-       'Nervous system disorders',
-       'Injury, poisoning and procedural complications']
+             'Metabolism and nutrition disorders', 'Product issues', 'Eye disorders',
+             'Investigations', 'Musculoskeletal and connective tissue disorders',
+             'Gastrointestinal disorders', 'Social circumstances',
+             'Immune system disorders', 'Reproductive system and breast disorders',
+             'Neoplasms benign, malignant and unspecified (incl cysts and polyps)',
+             'General disorders and administration site conditions',
+             'Endocrine disorders', 'Surgical and medical procedures',
+             'Vascular disorders', 'Blood and lymphatic system disorders',
+             'Skin and subcutaneous tissue disorders',
+             'Congenital, familial and genetic disorders',
+             'Infections and infestations',
+             'Respiratory, thoracic and mediastinal disorders',
+             'Psychiatric disorders', 'Renal and urinary disorders',
+             'Pregnancy, puerperium and perinatal conditions',
+             'Ear and labyrinth disorders', 'Cardiac disorders',
+             'Nervous system disorders',
+             'Injury, poisoning and procedural complications']
     labels = input_df[tasks]
     # convert 0 to -1
     labels = labels.replace(0, -1)
     assert len(smiles_list) == len(rdkit_mol_objs_list)
     assert len(smiles_list) == len(labels)
     return smiles_list, rdkit_mol_objs_list, labels.value
+
 
 def _load_toxcast_dataset(input_path):
     """
@@ -1176,6 +1218,7 @@ def _load_toxcast_dataset(input_path):
     return preprocessed_smiles_list, preprocessed_rdkit_mol_objs_list, \
            labels.values
 
+
 def _load_chembl_with_labels_dataset(root_path):
     """
     Data from 'Large-scale comparison of machine learning methods for drug target prediction on ChEMBL'
@@ -1192,35 +1235,36 @@ def _load_chembl_with_labels_dataset(root_path):
     # wget http://bioinf.jku.at/research/lsc/chembl20/dataPythonReduced/chembl20LSTM.pckl
 
     # 1. load folds and labels
-    f=open(os.path.join(root_path, 'folds0.pckl'), 'rb')
-    folds=pickle.load(f)
+    f = open(os.path.join(root_path, 'folds0.pckl'), 'rb')
+    folds = pickle.load(f)
     f.close()
 
-    f=open(os.path.join(root_path, 'labelsHard.pckl'), 'rb')
-    targetMat=pickle.load(f)
-    sampleAnnInd=pickle.load(f)
-    targetAnnInd=pickle.load(f)
+    f = open(os.path.join(root_path, 'labelsHard.pckl'), 'rb')
+    targetMat = pickle.load(f)
+    sampleAnnInd = pickle.load(f)
+    targetAnnInd = pickle.load(f)
     f.close()
 
-    targetMat=targetMat
-    targetMat=targetMat.copy().tocsr()
+    targetMat = targetMat
+    targetMat = targetMat.copy().tocsr()
     targetMat.sort_indices()
-    targetAnnInd=targetAnnInd
-    targetAnnInd=targetAnnInd-targetAnnInd.min()
+    targetAnnInd = targetAnnInd
+    targetAnnInd = targetAnnInd - targetAnnInd.min()
 
-    folds=[np.intersect1d(fold, sampleAnnInd.index.values).tolist() for fold in folds]
-    targetMatTransposed=targetMat[sampleAnnInd[list(chain(*folds))]].T.tocsr()
+    folds = [np.intersect1d(fold, sampleAnnInd.index.values).tolist() for fold in folds]
+    targetMatTransposed = targetMat[sampleAnnInd[list(chain(*folds))]].T.tocsr()
     targetMatTransposed.sort_indices()
     # # num positive examples in each of the 1310 targets
-    trainPosOverall=np.array([np.sum(targetMatTransposed[x].data > 0.5) for x in range(targetMatTransposed.shape[0])])
+    trainPosOverall = np.array([np.sum(targetMatTransposed[x].data > 0.5) for x in range(targetMatTransposed.shape[0])])
     # # num negative examples in each of the 1310 targets
-    trainNegOverall=np.array([np.sum(targetMatTransposed[x].data < -0.5) for x in range(targetMatTransposed.shape[0])])
+    trainNegOverall = np.array(
+        [np.sum(targetMatTransposed[x].data < -0.5) for x in range(targetMatTransposed.shape[0])])
     # dense array containing the labels for the 456331 molecules and 1310 targets
-    denseOutputData=targetMat.A # possible values are {-1, 0, 1}
+    denseOutputData = targetMat.A  # possible values are {-1, 0, 1}
 
     # 2. load structures
-    f=open(os.path.join(root_path, 'chembl20LSTM.pckl'), 'rb')
-    rdkitArr=pickle.load(f)
+    f = open(os.path.join(root_path, 'chembl20LSTM.pckl'), 'rb')
+    rdkitArr = pickle.load(f)
     f.close()
 
     assert len(rdkitArr) == denseOutputData.shape[0]
@@ -1247,12 +1291,14 @@ def _load_chembl_with_labels_dataset(root_path):
     assert len(preprocessed_rdkitArr) == denseOutputData.shape[0]
 
     smiles_list = [AllChem.MolToSmiles(m) if m != None else None for m in
-                   preprocessed_rdkitArr]   # bc some empty mol in the
+                   preprocessed_rdkitArr]  # bc some empty mol in the
     # rdkitArr zzz...
 
     assert len(preprocessed_rdkitArr) == len(smiles_list)
 
     return smiles_list, preprocessed_rdkitArr, folds, denseOutputData
+
+
 # root_path = 'dataset/chembl_with_labels'
 
 def check_smiles_validity(smiles):
@@ -1264,6 +1310,7 @@ def check_smiles_validity(smiles):
             return False
     except:
         return False
+
 
 def split_rdkit_mol_obj(mol):
     """
@@ -1280,6 +1327,7 @@ def split_rdkit_mol_obj(mol):
             mol_species_list.append(AllChem.MolFromSmiles(s))
     return mol_species_list
 
+
 def get_largest_mol(mol_list):
     """
     Given a list of rdkit mol objects, returns mol object containing the
@@ -1292,21 +1340,22 @@ def get_largest_mol(mol_list):
     largest_mol_idx = num_atoms_list.index(max(num_atoms_list))
     return mol_list[largest_mol_idx]
 
+
 def create_all_datasets():
     #### create dataset
     downstream_dir = [
-            'bace',
-            'bbbp',
-            'clintox',
-            'esol',
-            'freesolv',
-            'hiv',
-            'lipophilicity',
-            'muv',
-            'sider',
-            'tox21',
-            'toxcast'
-            ]
+        'bace',
+        'bbbp',
+        'clintox',
+        'esol',
+        'freesolv',
+        'hiv',
+        'lipophilicity',
+        'muv',
+        'sider',
+        'tox21',
+        'toxcast'
+    ]
 
     for dataset_name in downstream_dir:
         print(dataset_name)
@@ -1315,15 +1364,12 @@ def create_all_datasets():
         dataset = MoleculeDataset(root, dataset=dataset_name)
         print(dataset)
 
-
-    dataset = MoleculeDataset(root = "dataset/chembl_filtered", dataset="chembl_filtered")
+    dataset = MoleculeDataset(root="dataset/chembl_filtered", dataset="chembl_filtered")
     print(dataset)
-    dataset = MoleculeDataset(root = "dataset/zinc_standard_agent", dataset="zinc_standard_agent")
+    dataset = MoleculeDataset(root="dataset/zinc_standard_agent", dataset="zinc_standard_agent")
     print(dataset)
 
 
 # test MoleculeDataset object
 if __name__ == "__main__":
-
     create_all_datasets()
-

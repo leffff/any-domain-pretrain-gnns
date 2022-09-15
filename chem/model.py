@@ -24,18 +24,20 @@ class GINConv(MessagePassing):
     See https://arxiv.org/abs/1810.00826
     """
 
-    def __init__(self, emb_dim, aggr="add"):
+    def __init__(self, x_input_dim, edge_attr_input_dim, emb_dim, aggr="add"):
         super(GINConv, self).__init__()
         # multi-layer perceptron
+        self.x_input_dim = x_input_dim
+        self.edge_attr_input_dim = edge_attr_input_dim
+        self.emb_dim = emb_dim
+
         self.mlp = torch.nn.Sequential(torch.nn.Linear(emb_dim, 2 * emb_dim),
                                        torch.nn.ReLU(),
                                        torch.nn.Linear(2 * emb_dim, emb_dim))
 
-        self.edge_embedding_continous = torch.nn.Linear(1, emb_dim)  # FIX_HARDCODE: change to input_dim
-        self.edge_embedding_direction = torch.nn.Embedding(2, emb_dim)
+        self.edge_embedding_continous = torch.nn.Linear(self.edge_attr_input_dim, emb_dim)
 
         torch.nn.init.xavier_uniform_(self.edge_embedding_continous.weight.data)
-        torch.nn.init.xavier_uniform_(self.edge_embedding_direction.weight.data)
         self.aggr = aggr
 
     def forward(self, x, edge_index, edge_attr):
@@ -43,13 +45,11 @@ class GINConv(MessagePassing):
         edge_index = add_self_loops(edge_index, num_nodes=x.size(0))[0]
 
         # add features corresponding to self-loop edges.
-        self_loop_attr = torch.zeros(x.size(0), 4)
+        self_loop_attr = torch.zeros(x.size(0), self.edge_attr_input_dim)
         self_loop_attr[:, -2] = 1
         self_loop_attr = self_loop_attr.to(edge_attr.device).to(edge_attr.dtype)
         edge_attr = torch.cat((edge_attr, self_loop_attr), dim=0)
-
-        edge_embeddings = self.edge_embedding_continous(edge_attr[:, :-3]) + self.edge_embedding_direction(
-            edge_attr[:, -3].long())
+        edge_embeddings = self.edge_embedding_continous(edge_attr)
 
         return self.propagate(aggr=self.aggr, edge_index=edge_index, x=x, edge_attr=edge_embeddings)
 
@@ -62,16 +62,16 @@ class GINConv(MessagePassing):
 
 class GCNConv(MessagePassing):
 
-    def __init__(self, emb_dim, aggr="add"):
+    def __init__(self, x_input_dim, edge_attr_input_dim, emb_dim, aggr="add"):
         super(GCNConv, self).__init__()
-
+        self.x_input_dim = x_input_dim
+        self.edge_attr_input_dim = edge_attr_input_dim
         self.emb_dim = emb_dim
+
         self.linear = torch.nn.Linear(emb_dim, emb_dim)
-        self.edge_embedding_continous = torch.nn.Linear(1, emb_dim)  # FIX_HARDCODE: change to input_dim
-        self.edge_embedding_direction = torch.nn.Embedding(2, emb_dim)
+        self.edge_embedding_continous = torch.nn.Linear(self.edge_attr_input_dim, emb_dim)
 
         torch.nn.init.xavier_uniform_(self.edge_embedding_continous.weight.data)
-        torch.nn.init.xavier_uniform_(self.edge_embedding_direction.weight.data)
 
         self.aggr = aggr
 
@@ -91,13 +91,12 @@ class GCNConv(MessagePassing):
         edge_index = add_self_loops(edge_index, num_nodes=x.size(0))[0]
 
         # add features corresponding to self-loop edges.
-        self_loop_attr = torch.zeros(x.size(0), 4)
+        self_loop_attr = torch.zeros(x.size(0), self.edge_attr_input_dim)
         self_loop_attr[:, -2] = 1
         self_loop_attr = self_loop_attr.to(edge_attr.device).to(edge_attr.dtype)
         edge_attr = torch.cat((edge_attr, self_loop_attr), dim=0)
 
-        edge_embeddings = self.edge_embedding_continous(edge_attr[:, :-3]) + self.edge_embedding_direction(
-            edge_attr[:, -3].long())
+        edge_embeddings = self.edge_embedding_continous(edge_attr)
 
         norm = self.norm(edge_index, x.size(0), x.dtype)
 
@@ -110,12 +109,13 @@ class GCNConv(MessagePassing):
 
 
 class GATConvWrapper(MessagePassing):
-    def __init__(self, emb_dim, aggr="add", input_layer=False, n_edge_features=3):
+    def __init__(self, x_input_dim, edge_attr_input_dim, emb_dim, aggr="add", input_layer=False):
         super().__init__()
         self.aggr = aggr
         self.input_layer = input_layer
-        self.n_edge_features = n_edge_features
 
+        self.x_input_dim = x_input_dim
+        self.edge_attr_input_dim = edge_attr_input_dim
         self.in_channels = emb_dim
         self.out_channels = emb_dim
         self.heads = 4
@@ -136,24 +136,21 @@ class GATConvWrapper(MessagePassing):
             bias=self.bias,
         )
 
-        self.edge_embedding_continous = torch.nn.Linear(1, emb_dim)  # FIX_HARDCODE: change to input_dim
-        self.edge_embedding_direction = torch.nn.Embedding(2, emb_dim)
+        self.edge_embedding_continous = torch.nn.Linear(self.edge_attr_input_dim, emb_dim)
 
         torch.nn.init.xavier_uniform_(self.edge_embedding_continous.weight.data)
-        torch.nn.init.xavier_uniform_(self.edge_embedding_direction.weight.data)
 
     def forward(self, x, edge_index, edge_attr):
         # add self loops in the edge space
         edge_index = add_self_loops(edge_index, num_nodes=x.size(0))[0]
 
         # add features corresponding to self-loop edges.
-        self_loop_attr = torch.zeros(x.size(0), 4)
+        self_loop_attr = torch.zeros(x.size(0), self.edge_attr_input_dim)
         self_loop_attr[:, -2] = 1
         self_loop_attr = self_loop_attr.to(edge_attr.device).to(edge_attr.dtype)
         edge_attr = torch.cat((edge_attr, self_loop_attr), dim=0)
 
-        edge_embeddings = self.edge_embedding_continous(edge_attr[:, :-3]) + self.edge_embedding_direction(
-            edge_attr[:, -3].long())
+        edge_embeddings = self.edge_embedding_continous(edge_attr)
 
         x = self.gat_layer(x=x, edge_index=edge_index, edge_attr=edge_embeddings)
 
@@ -161,16 +158,16 @@ class GATConvWrapper(MessagePassing):
 
 
 class GraphSAGEConv(MessagePassing):
-    def __init__(self, emb_dim, aggr="mean"):
+    def __init__(self, x_input_dim, edge_attr_input_dim, emb_dim, aggr="mean"):
         super(GraphSAGEConv, self).__init__()
-
+        self.x_input_dim = x_input_dim
+        self.edge_attr_input_dim = edge_attr_input_dim
         self.emb_dim = emb_dim
+
         self.linear = torch.nn.Linear(emb_dim, emb_dim)
-        self.edge_embedding_continous = torch.nn.Linear(1, emb_dim)  # FIX_HARDCODE: change to input_dim
-        self.edge_embedding_direction = torch.nn.Embedding(2, emb_dim)
+        self.edge_embedding_continous = torch.nn.Linear(self.edge_attr_input_dim, emb_dim)
 
         torch.nn.init.xavier_uniform_(self.edge_embedding_continous.weight.data)
-        torch.nn.init.xavier_uniform_(self.edge_embedding_direction.weight.data)
 
         self.aggr = aggr
 
@@ -179,13 +176,12 @@ class GraphSAGEConv(MessagePassing):
         edge_index = add_self_loops(edge_index, num_nodes=x.size(0))[0]
 
         # add features corresponding to self-loop edges.
-        self_loop_attr = torch.zeros(x.size(0), 4)
+        self_loop_attr = torch.zeros(x.size(0), self.edge_attr_input_dim)
         self_loop_attr[:, -2] = 1
         self_loop_attr = self_loop_attr.to(edge_attr.device).to(edge_attr.dtype)
         edge_attr = torch.cat((edge_attr, self_loop_attr), dim=0)
 
-        edge_embeddings = self.edge_embedding_continous(edge_attr[:, :-3]) + self.edge_embedding_direction(
-            edge_attr[:, -3].long())
+        edge_embeddings = self.edge_embedding_continous(edge_attr)
 
         x = self.linear(x)
 
@@ -215,30 +211,42 @@ class GNN(torch.nn.Module):
 
     """
 
-    def __init__(self, num_layer, emb_dim, JK="last", drop_ratio=0, gnn_type="gin", n_edge_features=1):
+    def __init__(self, num_layer, emb_dim, x_input_dim, edge_attr_input_dim, JK="last", drop_ratio=0, gnn_type="gin", n_edge_features=1):
         super(GNN, self).__init__()
         self.num_layer = num_layer
+        self.x_input_dim = x_input_dim
+        self.edge_attr_input_dim = edge_attr_input_dim
+        self.emb_dim = emb_dim
         self.drop_ratio = drop_ratio
         self.JK = JK
 
         if self.num_layer < 2:
             raise ValueError("Number of GNN layers must be greater than 1.")
 
-        self.x_embedding1 = torch.nn.Linear(4, emb_dim)  # FIX_HARDCODE: change 4 to input_size
-
+        self.x_embedding1 = torch.nn.Linear(self.x_input_dim, emb_dim)
         torch.nn.init.xavier_uniform_(self.x_embedding1.weight.data)
 
         ###List of MLPs
         self.gnns = torch.nn.ModuleList()
         for layer in range(num_layer):
             if gnn_type == "gin":
-                self.gnns.append(GINConv(emb_dim, aggr="add"))
+                self.gnns.append(GINConv(x_input_dim=self.emb_dim,
+                                         edge_attr_input_dim=self.edge_attr_input_dim,
+                                         emb_dim=emb_dim,
+                                         aggr="add"))
             elif gnn_type == "gcn":
-                self.gnns.append(GCNConv(emb_dim))
+                self.gnns.append(GCNConv(x_input_dim=self.emb_dim,
+                                         edge_attr_input_dim=self.edge_attr_input_dim,
+                                         emb_dim=emb_dim))
             elif gnn_type == "gat":
-                self.gnns.append(GATConvWrapper(emb_dim, n_edge_features=n_edge_features))
+                self.gnns.append(GATConvWrapper(x_input_dim=self.emb_dim,
+                                                edge_attr_input_dim=self.edge_attr_input_dim,
+                                                emb_dim=emb_dim,
+                                                ))
             elif gnn_type == "graphsage":
-                self.gnns.append(GraphSAGEConv(emb_dim))
+                self.gnns.append(GraphSAGEConv(x_input_dim=self.emb_dim,
+                                               edge_attr_input_dim=self.edge_attr_input_dim,
+                                               emb_dim=emb_dim))
 
         ###List of batchnorms
         self.batch_norms = torch.nn.ModuleList()

@@ -2,6 +2,7 @@ import random
 
 import networkx as nx
 import torch
+import numpy as np
 from rdkit.Chem import AllChem
 
 from chem.loader import MoleculeDataset
@@ -273,6 +274,78 @@ class MaskNode:
         return '{}(num_atom_type={}, num_edge_type={}, mask_rate={}, mask_edge={})'.format(
             self.__class__.__name__, self.num_node_features, self.num_edge_features,
             self.mask_rate, self.mask_edge)
+
+
+class MaskEdge:
+    def __init__(self, mask_rate):
+        """
+        Assume edge_attr is of the form:
+        [w1, w2, w3, w4, w5, w6, w7, self_loop, mask]
+        :param mask_rate: % of edges to be masked
+        """
+        self.mask_rate = mask_rate
+
+    def __call__(self, data, masked_edge_indices=None):
+        """
+
+        :param data: pytorch geometric data object. Assume that the edge
+        ordering is the default pytorch geometric ordering, where the two
+        directions of a single edge occur in pairs.
+        E.g. data.edge_index = tensor([[0, 1, 1, 2, 2, 3],
+                                     [1, 0, 2, 1, 3, 2]])
+        :param masked_edge_indices: If None, then randomly sample num_edges * mask_rate + 1
+        number of edge indices. Otherwise, should correspond to the 1st
+        direction of an edge pair. ie all indices should be an even number
+        :return: None, creates new attributes in the original data object:
+        data.mask_edge_idx: indices of masked edges
+        data.mask_edge_labels: corresponding ground truth edge feature for
+        each masked edge
+        data.edge_attr: modified in place: the edge features (
+        both directions) that correspond to the masked edges have the masked
+        edge feature
+        """
+        num_edge_features = data.edge_attr.shape[1]
+        # sample x distinct edges to be masked, based on mask rate. But
+        # will sample at least 1 edge
+        num_edges = data.edge_index.shape[1]  # num unique edges
+        sample_size = int(num_edges * self.mask_rate + 1)
+        # during sampling, we only pick the 1st direction of a particular
+        # edge pair
+        if num_edges < 2:
+            return data
+
+        masked_edge_indices = [i for i in random.sample(range(num_edges - 1), sample_size)]
+
+        #         print(num_edges, "NUM EDGES")
+        #         print(data.x.shape)
+        #         print(data.edge_attr.shape)
+        #         print(data.edge_index.shape)
+        #         print(masked_edge_indices, "masked_edge_indices")
+        data.masked_edge_idx = torch.LongTensor(np.array(masked_edge_indices))
+        #         print(data.masked_edge_idx, "data.masked_edge_indices")
+
+        # create ground truth edge features for the edges that correspond to
+        # the masked indices
+        mask_edge_labels_list = []
+        for idx in masked_edge_indices:
+            mask_edge_labels_list.append(data.edge_attr[idx].view(1, -1))
+        data.mask_edge_label = torch.cat(mask_edge_labels_list, dim=0)
+
+        #         print(data.mask_edge_label, "MASK EDGE LABEL")
+
+        # created new masked edge_attr, where both directions of the masked
+        # edges have masked edge type. For message passing in gcn
+
+        # append the 2nd direction of the masked edges
+        #         all_masked_edge_indices = masked_edge_indices + [i + 1 for i in masked_edge_indices]
+        #         print(masked_edge_indices, "MASKED EDGE INDEXES")
+        for idx in masked_edge_indices:
+            data.edge_attr[idx] = torch.tensor(np.array([0] * (num_edge_features - 1) + [1]), dtype=torch.float)
+
+        return data
+        # # debugging
+        # print(masked_edge_indices)
+        # print(all_masked_edge_indices)
 
 
 if __name__ == "__main__":
