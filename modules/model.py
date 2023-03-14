@@ -211,7 +211,8 @@ class GNN(torch.nn.Module):
 
     """
 
-    def __init__(self, num_layer, emb_dim, x_input_dim, edge_attr_input_dim, JK="last", drop_ratio=0, gnn_type="gin", n_edge_features=1):
+    def __init__(self, num_layer, emb_dim, x_input_dim, edge_attr_input_dim, JK="last", drop_ratio=0, gnn_type="gin",
+                 n_edge_features=1):
         super(GNN, self).__init__()
         self.num_layer = num_layer
         self.x_input_dim = x_input_dim

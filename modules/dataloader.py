@@ -1,7 +1,7 @@
 import torch.utils.data
-from torch.utils.data.dataloader import default_collate
 
-from chem.batch import BatchSubstructContext, BatchMasking, BatchAE
+from modules.batch import BatchSubstructContext, BatchMasking, BatchAE
+
 
 class DataLoaderSubstructContext(torch.utils.data.DataLoader):
     r"""Data loader which merges data objects from a
@@ -21,6 +21,7 @@ class DataLoaderSubstructContext(torch.utils.data.DataLoader):
             shuffle,
             collate_fn=lambda data_list: BatchSubstructContext.from_data_list(data_list),
             **kwargs)
+
 
 class DataLoaderMasking(torch.utils.data.DataLoader):
     r"""Data loader which merges data objects from a
@@ -60,6 +61,3 @@ class DataLoaderAE(torch.utils.data.DataLoader):
             shuffle,
             collate_fn=lambda data_list: BatchAE.from_data_list(data_list),
             **kwargs)
-
-
-

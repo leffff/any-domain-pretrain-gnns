@@ -9,7 +9,6 @@ from typing import Any, Callable, List, Optional, Tuple, Union
 import numpy as np
 import torch.utils.data
 from torch import Tensor
-
 from torch_geometric.data import Data
 from torch_geometric.data.makedirs import makedirs
 
@@ -29,7 +28,6 @@ class MyDataset(torch.utils.data.Dataset):
         self.pre_transform = pre_transform
         self.pre_filter = pre_filter
         self._indices: Optional[Sequence] = None
-
 
     def indices(self) -> Sequence:
         return range(self.len()) if self._indices is None else self._indices
@@ -159,8 +157,8 @@ class MyDataset(torch.utils.data.Dataset):
         return len(self.indices())
 
     def __getitem__(
-        self,
-        idx: Union[int, np.integer, IndexType],
+            self,
+            idx: Union[int, np.integer, IndexType],
     ) -> Union['Dataset', Data]:
         if (isinstance(idx, (int, np.integer))
                 or (isinstance(idx, Tensor) and idx.dim() == 0)
@@ -210,10 +208,9 @@ class MyDataset(torch.utils.data.Dataset):
         dataset._indices = indices
         return dataset
 
-
     def shuffle(
-        self,
-        return_perm: bool = False,
+            self,
+            return_perm: bool = False,
     ) -> Union['Dataset', Tuple['Dataset', Tensor]]:
         r"""Randomly shuffles the examples in the dataset.
 
@@ -226,11 +223,9 @@ class MyDataset(torch.utils.data.Dataset):
         dataset = self.index_select(perm)
         return (dataset, perm) if return_perm is True else dataset
 
-
     def __repr__(self) -> str:
         arg_repr = str(len(self)) if len(self) > 1 else ''
         return f'{self.__class__.__name__}({arg_repr})'
-
 
 
 def to_list(value: Any) -> Sequence:
